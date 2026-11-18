@@ -571,8 +571,10 @@ pub struct OutPlace {
 }
 
 /// HOME's widgets, by id (the theme's `widgets` keys).
-pub const WIDGETS: [&str; 19] = [
+pub const WIDGETS: [&str; 20] = [
     "clock", "gauges", "weather", "disks", "sentinel", "automations", "calendar", "sweep", "usage", "today", "projects", "diary", "growth", "backup", "database",
+    // this fork: Outlook mail, sorted by the companion
+    "mail",
     // HOME's credit widgets, each shown once its key is saved
     "credit-openai", "credit-seedance", "credit-suno", "credit-elevenlabs",
 ];

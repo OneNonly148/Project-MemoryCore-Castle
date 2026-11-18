@@ -39,6 +39,9 @@ mod door_library;
 mod emotion;
 mod env;
 mod os;
+// this fork: HOME's Mail widget and the CRM room
+mod crm;
+mod mail;
 mod files;
 mod git;
 mod import;
@@ -408,6 +411,12 @@ pub fn run() {
             project_room::project_task_order,
             project_room::project_split_proposals,
             project_room::project_split_apply,
+            mail::mail_snapshot,
+            mail::mail_refresh,
+            crm::crm_overview,
+            crm::crm_contact,
+            crm::crm_set_folder,
+            crm::crm_open_profile,
             alerts::alert_sources,
             alerts::alert_active_room,
             roomalert::alert_sounds,

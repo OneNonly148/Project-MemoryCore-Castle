@@ -1,5 +1,5 @@
 <script setup>
-import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import TopBar from './components/TopBar.vue'
 import TerminalPanel from './components/TerminalPanel.vue'
 import LinkMenu from './components/LinkMenu.vue'
@@ -41,6 +41,10 @@ import LauncherView from './views/LauncherView.vue'
 import { DEFAULT_PINS, badgesFor, cleanPins, headerTabs, opensLauncher, setPinned, windowRoom } from './launcher.js'
 import { calendarCard, prepareCalendar, refreshCalendarCard } from './composables/useCalendar.js'
 import { automations, prepareAutomations } from './composables/useAutomations.js'
+// this fork: Outlook mail on HOME and the CRM room
+import MailWidget from './components/widgets/MailWidget.vue'
+import CrmView from './views/CrmView.vue'
+import { askCompanion } from './api/castle.js'
 import ThemeView from './views/ThemeView.vue'
 import StudioView from './views/StudioView.vue'
 import AppearanceView from './views/AppearanceView.vue'
@@ -103,6 +107,7 @@ const allTabs = [
   // tiles that open the BROWSER window instead of a room (launcher.js windowRoom)
   { id: 'browser', label: 'BROWSER' },
   { id: 'artifacts', label: 'ARTIFACTS' },
+  { id: 'crm', label: 'CRM' },
 ]
 // dev only: ?tab=<room> opens a room straight away (for checking a room in a browser)
 const devTab = import.meta.env.DEV ? new URLSearchParams(location.search).get('tab') : null
@@ -141,7 +146,7 @@ const settingsSection = ref('companion')
 // the update line for Settings > About
 const updateInfo = ref(null)
 // Rooms that are built; any other room shows its name until its phase lands.
-const BUILT = new Set(['browser', 'launcher', 'home', 'theme', 'apps', 'myprofile', 'diary', 'projects', 'library', 'studio', 'appearance', 'story', 'world', 'chat', 'dev', 'market', 'messaging', 'automations', 'calendar', 'finance', 'worldsmith', 'scriptorium', 'photo', 'music'])
+const BUILT = new Set(['browser', 'launcher', 'home', 'theme', 'apps', 'myprofile', 'diary', 'projects', 'library', 'studio', 'appearance', 'story', 'world', 'chat', 'dev', 'market', 'messaging', 'automations', 'calendar', 'finance', 'worldsmith', 'scriptorium', 'photo', 'music', 'crm'])
 // Tabs with something new waiting (the story speaking while the member is elsewhere).
 const marks = ref([])
 const memberName = ref('')
@@ -278,8 +283,8 @@ const savedKeys = ref([])
 // The widgets HOME draws: switched on, placed by the theme (all but the clock and the gauges),
 // and for a credit widget, its key saved.
 // clock, gauges, Sweep and weather show even when a theme names no place for them (Sweep and weather then take their own)
-const SELF_PLACED = ['clock', 'gauges', 'sweep', 'weather', 'disks', 'sentinel', 'automations', 'calendar']
-const FALLBACK_PLACES = { sweep: { right: '31%', top: '22%' }, weather: { left: '2%', bottom: '4%' }, disks: { right: '2%', bottom: '4%' }, sentinel: { right: '43%', top: '22%' }, automations: { right: '2%', top: '38%' }, calendar: { right: '2%', top: '62%' } }
+const SELF_PLACED = ['clock', 'gauges', 'sweep', 'weather', 'disks', 'sentinel', 'automations', 'calendar', 'mail']
+const FALLBACK_PLACES = { sweep: { right: '31%', top: '22%' }, weather: { left: '2%', bottom: '4%' }, disks: { right: '2%', bottom: '4%' }, sentinel: { right: '43%', top: '22%' }, automations: { right: '2%', top: '38%' }, calendar: { right: '2%', top: '62%' }, mail: { right: '31%', top: '36%', width: '24%' } }
 const shownWidgets = computed(() =>
   WIDGETS.map((w) => w.id).filter(
     (id) => isOn(id, { ...widgetPrefs.value, showUsageCard: usageCard.value }) && (SELF_PLACED.includes(id) || widgets.value[id] || memberPlace(widgetPrefs.value, theme.value?.id, id)) && hasItsKey(id, savedKeys.value) && roomIsOn(id, rooms.value),
@@ -467,6 +472,23 @@ async function loadSettingsAndTheme() {
   loaderRemember(chosen.theme)
   loaderEnd('themes')
   if (!setupOpen.value) checkWhatsNew(lastSeen)
+}
+
+// this fork: the Mail widget's CRM chip opens that contact; the CRM room's requests are typed
+// into the companion's main session on HOME, and the member presses Enter to send them.
+const crmFocus = ref('')
+function openCrm(id) {
+  crmFocus.value = ''
+  active.value = 'crm'
+  nextTick(() => (crmFocus.value = id))
+}
+async function askFromCrm(text) {
+  active.value = 'home'
+  try {
+    await askCompanion(text)
+  } catch {
+    // outside Castle's window, or the session is not running: nothing is typed
+  }
 }
 
 function openSettings(section = 'companion') {
@@ -805,6 +827,7 @@ watch(settingsStamp, () => {
           <SweepWidget v-else-if="id === 'sweep'" :theme-look="theme?.sweep?.look ?? ''" />
           <UsageWidget v-else-if="id === 'usage'" :stamp="settingsStamp" />
           <CreditWidget v-else-if="isCreditWidget(id)" :widget="id" />
+          <MailWidget v-else-if="id === 'mail'" :companion="companion" @crm="openCrm" />
           <HomeCards v-else :kind="id" :data="home" :backup="backup" :database="database" @open="openMemoryFile" @changed="loadHome" @backup="onBackupCard" @database="onDatabaseCard" />
         </div>
         <button v-if="!arranging" class="manage-widgets" @click="openSettings('widgets')">Manage widgets</button>
@@ -836,6 +859,7 @@ watch(settingsStamp, () => {
       <CalendarView v-if="active === 'calendar'" @open="(room) => (active = room)" />
       <FinanceView v-if="active === 'finance'" :companion="companion" />
       <MessagingView v-if="active === 'messaging'" :companion="companion" />
+      <CrmView v-if="active === 'crm'" class="room" :companion="companion" :focus="crmFocus" @ask="askFromCrm" />
       <div v-if="!BUILT.has(active)" class="room-soon">
         <p>{{ activeLabel }}</p>
       </div>

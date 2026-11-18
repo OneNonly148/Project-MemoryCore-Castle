@@ -908,3 +908,16 @@ export const musicAlbums = () => invoke('music_albums')
 export const musicApprove = (album, slug, take) => invoke('music_approve', { album, slug, take })
 export const onMusicOutput = (handler) => listen('music-output', (event) => handler(event.payload))
 export const onMusicExit = (handler) => listen('music-exit', (event) => handler(event.payload))
+// ---------- this fork: HOME's Mail widget and the CRM room ----------
+// The last sorted Outlook mail -> { sortedAt, unread, items: [{ id, from, email, subject, received, unread, needsReply, summary, link, crm }], problem, triedAt, running }
+export const mailSnapshot = () => invoke('mail_snapshot')
+// Sorts the mail now in the background (read-only Claude Code run); false when one is already running.
+export const mailRefresh = () => invoke('mail_refresh')
+export const onMailChanged = (handler) => listen('mail-changed', () => handler())
+// The CMS folder's contacts and counts; `today` is the member's own date, YYYY-MM-DD.
+export const crmOverview = (today) => invoke('crm_overview', { today })
+export const crmContact = (id) => invoke('crm_contact', { id })
+export const crmSetFolder = (folder) => invoke('crm_set_folder', { folder })
+export const crmOpenProfile = (path) => invoke('crm_open_profile', { path })
+// Types a request into the companion's main session without pressing Enter: the member sends it.
+export const askCompanion = (text) => invoke('terminal_write', { data: text, room: null })
