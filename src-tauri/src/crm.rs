@@ -89,6 +89,10 @@ pub struct Contact {
     pub email: String,
     pub product: String,
     pub event: String,
+    /// The newest of: its touchpoints, contact_date and flow_last_contact (YYYY-MM-DD), or "".
+    pub last_touch: String,
+    pub demo_date: String,
+    pub notes: String,
 }
 
 #[derive(Debug, Clone, Serialize, PartialEq)]
@@ -144,17 +148,42 @@ fn read(folder: &Path) -> Result<std::sync::Arc<Data>, String> {
             email: get(r, "email"),
             product: get(r, "product"),
             event: get(r, "event"),
+            last_touch: [get(r, "contact_date"), get(r, "flow_last_contact")].into_iter().max().unwrap_or_default(),
+            demo_date: get(r, "demo_date"),
+            notes: { let t = get(r, "talking_points"); if t.is_empty() { get(r, "notes") } else { t } },
         })
-        .collect();
-    let touches = std::fs::read_to_string(&touchpoints)
+        .collect::<Vec<Contact>>();
+    let touches: Vec<Touch> = std::fs::read_to_string(&touchpoints)
         .map(|t| records(&t))
         .unwrap_or_default()
         .iter()
         .map(|r| Touch { date: get(r, "date"), source: get(r, "source"), name: get(r, "name"), product: get(r, "product"), status: get(r, "status"), note: get(r, "note") })
         .collect();
+    let mut contacts = contacts;
+    stamp_last_touch(&mut contacts, &touches);
     let data = std::sync::Arc::new(Data { contacts, full, touches });
     *cache = Some((folder.to_path_buf(), stamp.0, stamp.1, data.clone()));
     Ok(data)
+}
+
+/// Each contact's last touch, raised to its newest touchpoint (matched by company or person name).
+pub fn stamp_last_touch(contacts: &mut [Contact], touches: &[Touch]) {
+    let mut newest: HashMap<String, &str> = HashMap::new();
+    for t in touches {
+        let key = t.name.trim().to_lowercase();
+        if key.len() > 2 && newest.get(&key).is_none_or(|d| *d < t.date.as_str()) {
+            newest.insert(key, &t.date);
+        }
+    }
+    for c in contacts.iter_mut() {
+        for name in [&c.company, &c.person] {
+            if let Some(d) = newest.get(&name.trim().to_lowercase()) {
+                if *d > c.last_touch.as_str() {
+                    c.last_touch = d.to_string();
+                }
+            }
+        }
+    }
 }
 
 /// A touchpoint's channel: WhatsApp when its source says so, else email.
@@ -178,6 +207,10 @@ pub struct Overview {
     pub sent_today: HashMap<&'static str, usize>,
     pub touches_this_month: usize,
     pub missing_email: usize,
+    /// Touchpoints per date (YYYY-MM-DD), for the activity chart.
+    pub per_day: HashMap<String, usize>,
+    /// Contacts snoozed until a date (YYYY-MM-DD), by id.
+    pub snoozed: HashMap<String, String>,
 }
 
 /// Counts in the pipeline's order, then the parked statuses by size.
@@ -209,7 +242,12 @@ pub async fn crm_overview(today: String) -> Result<Overview, String> {
         let folder = folder().ok_or("Choose your CMS folder (the one with data/prospects.csv).")?;
         let data = read(&folder)?;
         let (stages, parked, channels, sent_today, touches_this_month, missing_email) = overview_of(&data.contacts, &data.touches, &today);
-        Ok(Overview { folder: folder.display().to_string(), contacts: data.contacts.clone(), stages, parked, channels, sent_today, touches_this_month, missing_email })
+        let mut per_day: HashMap<String, usize> = HashMap::new();
+        for t in data.touches.iter().filter(|t| t.date.len() == 10) {
+            *per_day.entry(t.date.clone()).or_default() += 1;
+        }
+        let snoozed = snoozes().into_iter().filter(|(_, until)| until.as_str() > today.as_str()).collect();
+        Ok(Overview { folder: folder.display().to_string(), contacts: data.contacts.clone(), stages, parked, channels, sent_today, touches_this_month, missing_email, per_day, snoozed })
     })
     .await
     .map_err(|_| "The CRM could not be read.".to_string())?
@@ -294,6 +332,141 @@ pub fn crm_open_profile(path: String) -> Result<(), String> {
     }
 }
 
+// ---------- changing a contact's status (Castle writes prospects.csv itself) ----------
+
+/// The statuses Castle may set: the pipeline and the parked ones the CRM already uses.
+pub const SETTABLE: [&str; 9] = ["Profiling", "To contact", "Contacted", "In discussion", "Meeting scheduled", "On hold", "Not interested", "Bounced", "Lost"];
+
+/// Every field of CSV text with its byte span (start, end, quoted), row by row.
+fn spans(text: &str) -> Vec<Vec<(usize, usize, bool)>> {
+    let bytes = text.as_bytes();
+    let mut rows = Vec::new();
+    let mut row = Vec::new();
+    let mut i = 0;
+    let n = bytes.len();
+    if text.starts_with('\u{feff}') {
+        i = 3;
+    }
+    while i < n {
+        let start = i;
+        let quoted = bytes[i] == b'"';
+        if quoted {
+            i += 1;
+            while i < n {
+                if bytes[i] == b'"' {
+                    if i + 1 < n && bytes[i + 1] == b'"' {
+                        i += 2;
+                        continue;
+                    }
+                    i += 1;
+                    break;
+                }
+                i += 1;
+            }
+        }
+        while i < n && bytes[i] != b',' && bytes[i] != b'\n' && bytes[i] != b'\r' {
+            i += 1;
+        }
+        row.push((start, i, quoted));
+        if i >= n {
+            rows.push(std::mem::take(&mut row));
+            break;
+        }
+        match bytes[i] {
+            b',' => {
+                i += 1;
+                if i >= n {
+                    row.push((i, i, false));
+                    rows.push(std::mem::take(&mut row));
+                }
+            }
+            _ => {
+                if bytes[i] == b'\r' && i + 1 < n && bytes[i + 1] == b'\n' {
+                    i += 1;
+                }
+                i += 1;
+                rows.push(std::mem::take(&mut row));
+            }
+        }
+    }
+    rows
+}
+
+fn quoted_if_needed(value: &str) -> String {
+    if value.contains([',', '"', '\n', '\r']) { format!("\"{}\"", value.replace('"', "\"\"")) } else { value.to_string() }
+}
+
+/// The CSV text with one field of one row (found by its `id` column) set to `value`. Every other
+/// byte of the file stays exactly as it was.
+pub fn with_field(text: &str, id: &str, column: &str, value: &str) -> Result<String, String> {
+    let rows = spans(text);
+    let header = rows.first().ok_or("prospects.csv is empty.")?;
+    let name = |(a, b, _): &(usize, usize, bool)| text[*a..*b].trim_matches('"').trim().to_string();
+    let id_col = header.iter().position(|f| name(f) == "id").ok_or("prospects.csv has no id column.")?;
+    let col = header.iter().position(|f| name(f) == column).ok_or(format!("prospects.csv has no {column} column."))?;
+    let mut found = rows[1..].iter().filter(|r| r.get(id_col).is_some_and(|f| name(f) == id));
+    let row = found.next().ok_or("That contact is not in prospects.csv any more.")?;
+    if found.next().is_some() {
+        return Err("Two rows share that id; nothing was changed.".into());
+    }
+    let (a, b, _) = *row.get(col).ok_or("That row is short; nothing was changed.")?;
+    Ok(format!("{}{}{}", &text[..a], quoted_if_needed(value), &text[b..]))
+}
+
+/// Sets a contact's status in prospects.csv: a copy first (prospects.backup-castle-<time>.csv),
+/// then the new text through a temporary file, checked (same rows, same fields, only that one
+/// changed) before it replaces the file.
+#[tauri::command]
+pub fn crm_set_status(id: String, status: String) -> Result<String, String> {
+    if !SETTABLE.contains(&status.as_str()) {
+        return Err("That is not a CRM status.".into());
+    }
+    let folder = folder().ok_or("No CMS folder.")?;
+    let data_dir = folder.join("data");
+    let file = data_dir.join("prospects.csv");
+    let before = std::fs::read_to_string(&file).map_err(|_| "prospects.csv could not be read.".to_string())?;
+    let after = with_field(&before, &id, "status", &status)?;
+    let (old, new) = (records(&before), records(&after));
+    let changed: Vec<usize> = (0..old.len()).filter(|i| old.get(*i) != new.get(*i)).collect();
+    let ok = old.len() == new.len()
+        && changed.len() <= 1
+        && changed.iter().all(|i| new[*i].get("id").map(|v| v.trim()) == Some(id.as_str()) && new[*i].get("status").map(|v| v.trim()) == Some(status.as_str()));
+    if !ok {
+        return Err("The change did not check out, so prospects.csv was left as it was.".into());
+    }
+    let secs = SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0);
+    std::fs::copy(&file, data_dir.join(format!("prospects.backup-castle-{secs}.csv"))).map_err(|_| "The backup copy could not be made, so nothing was changed.".to_string())?;
+    let tmp = data_dir.join(".prospects.castle-tmp.csv");
+    std::fs::write(&tmp, &after).map_err(|_| "prospects.csv could not be written.".to_string())?;
+    std::fs::rename(&tmp, &file).map_err(|_| "prospects.csv could not be replaced.".to_string())?;
+    let company = new.iter().find(|r| r.get("id").map(|v| v.trim()) == Some(id.as_str())).map(|r| get(r, "company")).unwrap_or_default();
+    Ok(format!("{company} is now {status}."))
+}
+
+// ---------- snooze (kept by Castle, not in the CRM) ----------
+
+fn snooze_file() -> Option<PathBuf> {
+    crate::env::app_data().map(|a| a.join("MemoryCore Castle").join("crm-snooze.json"))
+}
+
+fn snoozes() -> HashMap<String, String> {
+    snooze_file().and_then(|f| std::fs::read_to_string(f).ok()).and_then(|t| serde_json::from_str(&t).ok()).unwrap_or_default()
+}
+
+/// Hides a contact from Today until `until` (YYYY-MM-DD); an empty `until` wakes it.
+#[tauri::command]
+pub fn crm_snooze(id: String, until: String) -> Result<(), String> {
+    let mut all = snoozes();
+    if until.is_empty() {
+        all.remove(&id);
+    } else {
+        all.insert(id, until);
+    }
+    let file = snooze_file().ok_or("Castle has no settings folder.")?;
+    let _ = std::fs::create_dir_all(file.parent().unwrap_or(Path::new(".")));
+    std::fs::write(file, serde_json::to_string(&all).unwrap_or_default()).map_err(|_| "The snooze could not be saved.".to_string())
+}
+
 /// Marks each mail whose sender is a CRM contact: by address, else by company domain.
 pub fn link(contacts: &[Contact], mail: &mut [crate::mail::Mail]) {
     let mut by_email: HashMap<String, &Contact> = HashMap::new();
@@ -328,7 +501,44 @@ mod tests {
     use super::*;
 
     fn contact(id: &str, company: &str, status: &str, email: &str) -> Contact {
-        Contact { id: id.into(), company: company.into(), person: String::new(), position: String::new(), sector: String::new(), status: status.into(), channel: "Direct".into(), contact_date: String::new(), email: email.into(), product: String::new(), event: String::new() }
+        Contact { id: id.into(), company: company.into(), person: String::new(), position: String::new(), sector: String::new(), status: status.into(), channel: "Direct".into(), contact_date: String::new(), email: email.into(), product: String::new(), event: String::new(), last_touch: String::new(), demo_date: String::new(), notes: String::new() }
+    }
+
+    #[test]
+    fn one_field_changes_and_every_other_byte_stays() {
+        let text = "id,company,status,notes\n1,\"A, Sdn Bhd\",To contact,\"line one\nline \"\"two\"\"\"\n2,B,Contacted,\r\n3,C,To contact,x";
+        let out = with_field(text, "1", "status", "In discussion").unwrap();
+        assert_eq!(out, text.replacen("To contact", "In discussion", 1));
+        let out = with_field(text, "3", "status", "On hold").unwrap();
+        assert!(out.ends_with("3,C,On hold,x") && out.starts_with("id,company,status,notes\n1,\"A, Sdn Bhd\",To contact"));
+        assert!(with_field(text, "9", "status", "Lost").unwrap_err().contains("not in prospects.csv"));
+        assert!(with_field("id,status\n1,a\n1,b\n", "1", "status", "x").unwrap_err().contains("Two rows"));
+        assert_eq!(with_field("id,status\n1,\"To contact\"\n", "1", "status", "Lost").unwrap(), "id,status\n1,Lost\n");
+    }
+
+    /// On a copy of a real prospects.csv (CASTLE_TEST_CSV): every row's status can be set alone.
+    #[test]
+    #[ignore]
+    fn a_real_csv_changes_only_the_one_field() {
+        let text = std::fs::read_to_string(std::env::var("CASTLE_TEST_CSV").expect("set CASTLE_TEST_CSV")).unwrap();
+        let before = records(&text);
+        for (i, row) in before.iter().enumerate().step_by(97) {
+            let id = row["id"].trim().to_string();
+            let after = records(&with_field(&text, &id, "status", "Lost").unwrap());
+            assert_eq!(after.len(), before.len());
+            let changed: Vec<usize> = (0..before.len()).filter(|j| before[*j] != after[*j]).collect();
+            assert!(changed.is_empty() || changed == vec![i], "row {i} changed {changed:?}");
+            assert_eq!(after[i]["status"], "Lost");
+        }
+    }
+
+    #[test]
+    fn last_touch_is_the_newest_touchpoint_or_date() {
+        let mut cs = vec![contact("1", "Perkasa", "In discussion", "")];
+        cs[0].last_touch = "2026-10-01".into();
+        let t = |d: &str, n: &str| Touch { date: d.into(), source: "".into(), name: n.into(), product: "".into(), status: "".into(), note: "".into() };
+        stamp_last_touch(&mut cs, &[t("2026-11-02", "perkasa"), t("2026-09-01", "Perkasa")]);
+        assert_eq!(cs[0].last_touch, "2026-11-02");
     }
 
     #[test]
