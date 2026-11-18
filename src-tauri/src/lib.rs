@@ -417,6 +417,8 @@ pub fn run() {
             crm::crm_contact,
             crm::crm_set_folder,
             crm::crm_open_profile,
+            crm::crm_set_status,
+            crm::crm_snooze,
             alerts::alert_sources,
             alerts::alert_active_room,
             roomalert::alert_sounds,

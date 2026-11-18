@@ -921,3 +921,6 @@ export const crmSetFolder = (folder) => invoke('crm_set_folder', { folder })
 export const crmOpenProfile = (path) => invoke('crm_open_profile', { path })
 // Types a request into the companion's main session without pressing Enter: the member sends it.
 export const askCompanion = (text) => invoke('terminal_write', { data: text, room: null })
+// CRM: a contact's status, written into prospects.csv (a backup copy first); a snooze until YYYY-MM-DD ('' wakes it).
+export const crmSetStatus = (id, status) => invoke('crm_set_status', { id, status })
+export const crmSnooze = (id, until) => invoke('crm_snooze', { id, until })
