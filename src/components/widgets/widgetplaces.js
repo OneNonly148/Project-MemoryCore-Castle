@@ -16,6 +16,7 @@ export const WIDGETS = [
   { id: 'growth', name: 'Growth', about: 'How your memory has grown.' },
   { id: 'backup', name: 'Backup', about: 'When your memory was last backed up.' },
   { id: 'database', name: 'Database', about: 'Your memory database and its engine.' },
+  { id: 'mail', name: 'Mail', about: 'Your newest Outlook mail, sorted by your companion every 30 minutes on workdays.' },
   { id: 'credit-openai', name: 'OpenAI', about: 'What is left on your OpenAI account, for pictures. Shown once its key is saved.', key: 'openai' },
   { id: 'credit-seedance', name: 'Seedance', about: "This month's Seedance spend on BytePlus, for videos. Shown once its key is saved.", key: 'seedance' },
   { id: 'credit-suno', name: 'Suno', about: 'Your Suno credits, for songs. Shown once its key is saved.', key: 'suno' },

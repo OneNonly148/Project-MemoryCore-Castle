@@ -483,3 +483,16 @@ export const projectTaskOrder = (file, ids) => invoke('project_task_order', { fi
 // -> [{ parent, parentExists, items: [{ id, name, newName }] }]
 export const projectSplitProposals = () => invoke('project_split_proposals')
 export const projectSplitApply = (ids) => invoke('project_split_apply', { ids })
+// ---------- this fork: HOME's Mail widget and the CRM room ----------
+// The last sorted Outlook mail -> { sortedAt, unread, items: [{ id, from, email, subject, received, unread, needsReply, summary, link, crm }], problem, triedAt, running }
+export const mailSnapshot = () => invoke('mail_snapshot')
+// Sorts the mail now in the background (read-only Claude Code run); false when one is already running.
+export const mailRefresh = () => invoke('mail_refresh')
+export const onMailChanged = (handler) => listen('mail-changed', () => handler())
+// The CMS folder's contacts and counts; `today` is the member's own date, YYYY-MM-DD.
+export const crmOverview = (today) => invoke('crm_overview', { today })
+export const crmContact = (id) => invoke('crm_contact', { id })
+export const crmSetFolder = (folder) => invoke('crm_set_folder', { folder })
+export const crmOpenProfile = (path) => invoke('crm_open_profile', { path })
+// Types a request into the companion's main session without pressing Enter: the member sends it.
+export const askCompanion = (text) => invoke('terminal_write', { data: text, room: null })
