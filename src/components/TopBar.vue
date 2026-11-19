@@ -150,7 +150,12 @@ onBeforeUnmount(() => {
 <template>
   <!-- the bar's empty space moves the window (the free layout); tabs and buttons keep their clicks -->
   <header class="top-bar" data-tauri-drag-region>
-    <span class="title" data-tauri-drag-region><span class="gem">◆</span> MEMORYCORE<span v-if="version" class="version" :title="`MemoryCore Castle ${version}`">v{{ version }}</span></span>
+    <!-- the brand: MEMORYCORE, and under it the update chip (App puts it in the slot), as wide as
+         the name, so it never sits on the buttons at the right -->
+    <div class="brand" data-tauri-drag-region>
+      <span class="title" data-tauri-drag-region><span class="gem">◆</span> MEMORYCORE<span v-if="version" class="version" :title="`MemoryCore Castle ${version}`">v{{ version }}</span></span>
+      <slot name="brand" />
+    </div>
     <nav class="tabs" :class="{ sorting: dragging }">
       <button
         v-for="tab in tabs"
@@ -230,8 +235,25 @@ onBeforeUnmount(() => {
   box-shadow: 0 0 6px #ffe39a;
 }
 
+/* The name sets the brand's width; what sits under it (the update chip) takes that width and
+   never widens it (width 0 + min-width 100% leaves it out of the column's own size). */
+.brand {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  flex: none;
+  gap: 2px;
+  max-height: var(--bar-height);
+}
+
+.brand > :slotted(*) {
+  width: 0;
+  min-width: 100%;
+}
+
 .title {
   font-size: 13px;
+  line-height: 16px;
   letter-spacing: 0.2em;
   white-space: nowrap;
 }
