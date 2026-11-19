@@ -4,10 +4,11 @@
 // waits until the diary changes (three minutes at most, or Skip). Then the update downloads, its
 // signature is checked, it installs and Castle restarts. A member's own build: a quiet "X is out"
 // that opens Settings > About (it updates with git pull, never by itself).
+// It sits in the top bar's brand block, under MEMORYCORE and as wide as it (TopBar's brand slot),
+// so it never covers the buttons at the right. Long words end in "…"; the full line is its tooltip.
 import { onBeforeUnmount, onMounted, ref } from 'vue'
 import { diaryStamp, terminalState, terminalWrite, updateCheck, updateInstall } from '../api/castle.js'
 import MarkdownText from './MarkdownText.vue'
-import HelpTip from './HelpTip.vue'
 import { typeLine } from './typeline.js'
 
 const emit = defineEmits(['status', 'about'])
@@ -63,40 +64,56 @@ onBeforeUnmount(() => clearInterval(timer))
 </script>
 
 <template>
-  <div v-if="status?.available && status.canInstall" class="update">
+  <div v-if="status?.available && status.canInstall" class="update ready">
     <template v-if="!step">
-      <span>Update ready: {{ status.available }}</span>
-      <button v-if="status.notes" class="quiet" @click="notesOpen = !notesOpen">What's new</button>
-      <button @click="updateNow">Update now</button>
-      <HelpTip block text="The diary is saved first, then Castle restarts on the new version. Your memory, settings and keys stay as they are." />
+      <button
+        v-if="status.notes"
+        class="label quiet"
+        :title="`Update ready: ${status.available} · What's new`"
+        :aria-expanded="notesOpen"
+        @click="notesOpen = !notesOpen"
+      >{{ status.available }} is ready</button>
+      <span v-else class="label" :title="`Update ready: ${status.available}`">{{ status.available }} is ready</span>
+      <button class="go" @click="updateNow">Update now</button>
     </template>
     <template v-else>
-      <span>{{ step }}</span>
-      <button v-if="step.startsWith('Saving')" @click="skip = true">Skip</button>
+      <span class="label" :title="step">{{ step }}</span>
+      <button v-if="step.startsWith('Saving')" class="go" @click="skip = true">Skip</button>
     </template>
     <div v-if="notesOpen && !step" class="notes">
       <MarkdownText :text="status.notes" />
+      <p class="hint">The diary is saved first, then Castle restarts on the new version. Your memory, settings and keys stay as they are.</p>
     </div>
   </div>
-  <button v-else-if="status?.available" class="update own" :title="status.message" @click="emit('about')">Castle {{ status.available }} is out</button>
+  <button v-else-if="status?.available" class="update own" :title="status.message || `Castle ${status.available} is out`" @click="emit('about')">
+    <span class="label">Castle {{ status.available }} is out</span>
+  </button>
 </template>
 
 <style scoped>
+/* Under MEMORYCORE in the 48px bar: one 18px line, the brand's width (TopBar sets it). */
 .update {
-  position: fixed;
-  top: 8px;
-  right: 110px;
+  position: relative;
   z-index: 40;
+  box-sizing: border-box;
   display: flex;
-  gap: 8px;
+  gap: 6px;
   align-items: center;
-  padding: 4px 10px;
+  height: 18px;
+  padding: 0 3px 0 8px;
   border: 1px solid var(--good);
   border-radius: 999px;
   background: var(--panel-background);
-  font-size: 12px;
+  color: var(--text);
+  font: inherit;
+  font-size: 10.5px;
+  line-height: 16px;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
 }
 .update.own {
+  justify-content: center;
+  padding: 0 8px;
   border-color: var(--line);
   color: var(--text-dim);
   cursor: pointer;
@@ -104,10 +121,20 @@ onBeforeUnmount(() => clearInterval(timer))
 .update.own:hover {
   color: var(--text);
 }
+.label {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  text-align: left;
+}
+.update.own .label {
+  flex: 0 1 auto;
+}
 .notes {
   position: absolute;
   top: calc(100% + 8px);
-  right: 0;
+  left: 0;
   width: min(420px, 80vw);
   max-height: 60vh;
   overflow: auto;
@@ -116,19 +143,39 @@ onBeforeUnmount(() => clearInterval(timer))
   border-radius: 12px;
   background: var(--panel-background);
   -webkit-backdrop-filter: blur(var(--glass-blur)); backdrop-filter: blur(var(--glass-blur));
+  font-size: 13px;
+  line-height: 1.5;
+  letter-spacing: normal;
+  white-space: normal;
+}
+.notes .hint {
+  margin: 10px 0 0;
+  color: var(--text-dim);
+}
+button {
+  font: inherit;
+  cursor: pointer;
 }
 button.quiet {
+  padding: 0;
+  border: 0;
   background: transparent;
   color: var(--text);
 }
-button {
-  padding: 2px 10px;
-  border: 1px solid var(--line);
+button.quiet:hover {
+  text-decoration: underline;
+}
+button.go {
+  flex: none;
+  padding: 0 8px;
+  border: 0;
   border-radius: 999px;
   background: var(--good);
   color: #07142e;
-  font: inherit;
-  font-size: 12px;
-  cursor: pointer;
+  line-height: 14px;
+}
+button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
 }
 </style>
