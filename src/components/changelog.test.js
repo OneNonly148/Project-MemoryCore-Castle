@@ -26,6 +26,11 @@ describe("what's new", () => {
     expect(sectionFor(log, '9.9.9')).toBeNull()
   })
 
+  it('reads a personal build (x.y.z-p) as the release it sits on', () => {
+    expect(sectionFor(log, '0.1.0-p').body).toBe('- one')
+    expect(unseenSections(log, '0.1.0-p', '0.1.0-p')).toEqual([])
+  })
+
   it('has words for the running version in the bundled changelog', () => {
     expect(sectionFor(changelog, pkg.version)).not.toBeNull()
   })

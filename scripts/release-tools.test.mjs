@@ -65,7 +65,7 @@ describe('the changelog', () => {
 
   it('has words for the version in package.json', () => {
     const text = readFileSync(new URL('../CHANGELOG.md', import.meta.url), 'utf8')
-    const version = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8')).version
+    const version = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8')).version.replace(/-p$/, '') // a personal build (x.y.z-p) sits on its release
     expect(changelogSection(text, version)).not.toBe('')
   })
 })
