@@ -4,7 +4,12 @@ import { changelogSections, compareVersions, isVersion } from '../../scripts/rel
 
 // The sections the member has not seen yet: newer than the last version they saw, up to the one
 // running, newest first. Nothing on the very first launch (no last version) or when nothing is new.
+// A personal build (x.y.z-p) reads the changelog of the release it sits on.
+const base = (v) => (typeof v === 'string' ? v.replace(/-p$/, '') : v)
+
 export function unseenSections(text, lastSeen, current) {
+  lastSeen = base(lastSeen)
+  current = base(current)
   if (!isVersion(lastSeen) || !isVersion(current) || compareVersions(current, lastSeen) <= 0) return []
   return changelogSections(text)
     .filter((s) => s.version && s.body && compareVersions(s.version, lastSeen) > 0 && compareVersions(s.version, current) <= 0)
@@ -13,6 +18,7 @@ export function unseenSections(text, lastSeen, current) {
 
 // One version's section (for Settings > About and the dev preview), or null.
 export function sectionFor(text, version) {
+  version = base(version)
   const s = changelogSections(text).find((x) => x.version === version && x.body)
   return s ? { version: s.version, date: s.date, body: s.body } : null
 }

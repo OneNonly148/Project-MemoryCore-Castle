@@ -40,7 +40,10 @@ const LATEST_RELEASE: &str = "https://api.github.com/repos/Kiyoraka/Project-Memo
 
 /// "0.2.0" or "v0.2.0" -> (0, 2, 0).
 fn parts(v: &str) -> Option<(u64, u64, u64)> {
-    let mut it = v.trim().trim_start_matches('v').split('.').map(|p| p.parse::<u64>().ok());
+    // A personal build (x.y.z-p) compares as the release it sits on.
+    let v = v.trim().trim_start_matches('v');
+    let v = v.strip_suffix("-p").unwrap_or(v);
+    let mut it = v.split('.').map(|p| p.parse::<u64>().ok());
     let out = (it.next()??, it.next()??, it.next()??);
     if it.next().is_some() {
         return None;
@@ -250,6 +253,13 @@ pub fn diary_stamp(store: tauri::State<crate::settings::SettingsStore>) -> u64 {
 mod tests {
     use super::*;
     use serde_json::json;
+
+    #[test]
+    fn a_personal_build_compares_as_its_release() {
+        assert!(super::newer("0.2.23", "0.2.22-p"));
+        assert!(!super::newer("0.2.22", "0.2.22-p"));
+        assert!(!super::newer("0.2.21", "0.2.22-p"));
+    }
 
     #[test]
     fn a_test_build_is_never_official() {
