@@ -560,7 +560,11 @@ watch(settingsStamp, () => {
       @settings="openSettings"
       @sentinel="sentinelOpen = true"
       @hide="hideCastle().catch(() => {})"
-    />
+    >
+      <template #brand>
+        <UpdateChip @status="updateInfo = $event" @about="openSettings('about')" />
+      </template>
+    </TopBar>
     <main class="screen">
       <div v-show="active === 'home'" ref="homeEl" class="home" :class="[theme?.widgetStyle ?? 'glass', skinClass(theme), { arranging }]">
         <UsageReveal v-if="theme?.usageReveal" :theme="theme" :visible="active === 'home'" />
@@ -647,7 +651,6 @@ watch(settingsStamp, () => {
       <NoticeToasts @keys="openKeys" />
       <MeterAlert />
       <AmbientMusic />
-      <UpdateChip @status="updateInfo = $event" @about="openSettings('about')" />
       <SetupView v-if="setupOpen" :reopened="setupReopened" @done="setupDone" @close="setupOpen = false" />
     </main>
   </div>
