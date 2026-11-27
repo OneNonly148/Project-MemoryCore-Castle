@@ -206,7 +206,7 @@ fn run_isolated(
         .is_some_and(|e| e.eq_ignore_ascii_case("cmd") || e.eq_ignore_ascii_case("bat"))
     {
         let mut c = Command::new("cmd.exe");
-        c.args(["/d", "/c"]).arg(&program);
+        c.args(["/d", "/c", "call"]).arg(&program); // `call`: keeps quoted paths with spaces whole
         c
     } else {
         Command::new(program)

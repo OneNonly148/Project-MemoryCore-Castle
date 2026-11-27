@@ -30,7 +30,10 @@ pub fn launch_command(program: &Path, folder: &Path, vars: &[(String, String)], 
     // platform: windows-only - a .cmd / .bat launcher exists only on Windows
     let mut command = if is_script {
         let mut command = CommandBuilder::new("cmd.exe");
-        command.arg("/c");
+        // `call` first: cmd /c strips the outer quotes when the line starts with one, which breaks a
+        // quoted path with a space (a user folder like "C:\Users\Jane Doe") as soon as a second
+        // argument is quoted too; with `call` leading, cmd leaves every quote where it is
+        command.args(["/d", "/c", "call"]);
         command.arg(program.as_os_str());
         command
     } else {
@@ -379,7 +382,8 @@ mod tests {
     fn a_cmd_shim_runs_through_cmd_and_a_program_runs_directly() {
         let shim = launch_command(Path::new("C:\\npm\\codex.cmd"), Path::new("C:\\"), &[], &[]);
         assert_eq!(shim.get_argv()[0].to_str(), Some("cmd.exe"));
-        assert_eq!(shim.get_argv()[2].to_str(), Some("C:\\npm\\codex.cmd"));
+        assert_eq!(shim.get_argv()[3].to_str(), Some("call"));
+        assert_eq!(shim.get_argv()[4].to_str(), Some("C:\\npm\\codex.cmd"));
         let program = launch_command(Path::new("C:\\bin\\claude.exe"), Path::new("C:\\"), &[], &[]);
         assert_eq!(program.get_argv()[0].to_str(), Some("C:\\bin\\claude.exe"));
     }
@@ -444,9 +448,56 @@ mod tests {
         let args = vec!["--append-system-prompt-file".to_string(), "C:\\boot\\main.md".to_string()];
         let shim = launch_command(Path::new("C:\\npm\\claude.cmd"), Path::new("C:\\"), &[], &args);
         let words: Vec<String> = shim.get_argv().iter().map(|a| a.to_string_lossy().to_string()).collect();
-        assert_eq!(words, vec!["cmd.exe", "/c", "C:\\npm\\claude.cmd", "--append-system-prompt-file", "C:\\boot\\main.md"]);
+        assert_eq!(words, vec!["cmd.exe", "/d", "/c", "call", "C:\\npm\\claude.cmd", "--append-system-prompt-file", "C:\\boot\\main.md"]);
         let program = launch_command(Path::new("C:\\bin\\claude.exe"), Path::new("C:\\"), &[], &args);
         let words: Vec<String> = program.get_argv().iter().map(|a| a.to_string_lossy().to_string()).collect();
         assert_eq!(words, vec!["C:\\bin\\claude.exe", "--append-system-prompt-file", "C:\\boot\\main.md"]);
+    }
+
+    /// A user folder with a space ("C:\Users\Jane Doe") holds both the npm shim and the boot file:
+    /// two quoted paths on one cmd /c line. Without `call` cmd cut the line at the first space.
+    #[cfg(windows)]
+    #[test]
+    fn a_shim_and_an_argument_both_under_a_folder_with_a_space_still_run() {
+        let dir = std::env::temp_dir().join(format!("castle shim test {}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let shim = dir.join("echo shim.cmd");
+        std::fs::write(&shim, "@echo off\r\necho shim-ran [%~1] [%~2]\r\n").unwrap();
+        let file = dir.join("boot file.md").to_string_lossy().to_string();
+        let mut command = launch_command(&shim, &dir, &[], &["--file".to_string(), file.clone()]);
+        command.cwd(&dir);
+
+        let host = PtyHost::default();
+        let (text_tx, text_rx) = mpsc::channel::<String>();
+        let (exit_tx, exit_rx) = mpsc::channel::<(u64, Option<u32>)>();
+        assert!(host
+            .start(command, 200, 24, move |t| { let _ = text_tx.send(t); }, move |id, code| {
+                let _ = exit_tx.send((id, code));
+            })
+            .unwrap());
+        let mut seen = String::new();
+        let mut answered = false;
+        let deadline = std::time::Instant::now() + Duration::from_secs(20);
+        let (id, _code) = loop {
+            if let Ok(ending) = exit_rx.try_recv() {
+                break ending;
+            }
+            assert!(std::time::Instant::now() < deadline, "the shim never ended; output was: {seen:?}");
+            if let Ok(piece) = text_rx.recv_timeout(Duration::from_millis(200)) {
+                seen.push_str(&piece);
+                if !answered && seen.contains("\x1b[6n") {
+                    host.write(b"\x1b[1;1R").unwrap();
+                    answered = true;
+                }
+            }
+        };
+        host.finished(id);
+        while let Ok(piece) = text_rx.recv_timeout(Duration::from_secs(2)) {
+            seen.push_str(&piece);
+        }
+        let _ = std::fs::remove_dir_all(&dir);
+        assert!(!seen.contains("is not recognized"), "cmd split the path: {seen:?}");
+        assert!(seen.contains("shim-ran [--file]"), "output was: {seen:?}");
+        assert!(seen.contains("boot file.md]"), "the quoted argument did not arrive whole: {seen:?}");
     }
 }

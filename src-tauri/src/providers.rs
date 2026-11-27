@@ -825,7 +825,7 @@ fn run_image_with_program(
     // platform: windows-only - a .cmd / .bat launcher exists only on Windows
     let mut command = if through_cmd {
         let mut c = std::process::Command::new("cmd.exe");
-        c.arg("/c").arg(program);
+        c.args(["/d", "/c", "call"]).arg(program); // `call`: keeps quoted paths with spaces whole
         c
     } else {
         std::process::Command::new(program)
@@ -1081,7 +1081,7 @@ fn auth_output(cli: Cli) -> Option<std::process::Output> {
         .is_some_and(|x| x.eq_ignore_ascii_case("cmd"))
     {
         let mut c = std::process::Command::new("cmd.exe");
-        c.arg("/c").arg(program);
+        c.args(["/d", "/c", "call"]).arg(program); // `call`: keeps quoted paths with spaces whole
         c
     } else {
         std::process::Command::new(program)
