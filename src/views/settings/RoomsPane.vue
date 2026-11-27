@@ -67,6 +67,7 @@ const ROOM_GROUPS = [
       { id: 'chat', label: 'CHAT', line: 'Off stops reading the room. Its files stay.', tip: 'Turning CHAT off stops reading the room. Its files stay.' },
       { id: 'market', label: 'MARKET' },
       { id: 'dev', label: 'DEV' },
+      { id: 'crm', label: 'CRM', line: 'This fork: your contacts, deals and outreach.' },
       { id: 'scriptorium', label: 'SCRIPTORIUM', line: 'Off at first: writing - tier 1.', tip: 'Off to begin with: SCRIPTORIUM is your own office - documents, sheets, slides and PDFs - with your companion beside the page. .docx, .xlsx, .pptx, .csv and .pdf files open, are written by hand or by chat and save in their own shape; sheets calculate, slides play as a show, PDF forms fill and locked PDFs open. More grows with each step. Your documents never leave this computer. Off ends its session.' },
       { id: 'automations', label: 'AUTOMATIONS', line: 'Off at first: private briefings on your schedule.', tip: 'Jobs run while Castle is open. New jobs start switched off. Pause all stops new runs and delivery.' },
       { id: 'calendar', label: 'CALENDAR', line: 'Off at first: everything with a date on one page.', tip: 'Off to begin with: CALENDAR shows your reminders, project tasks, diary pages and automation runs by date. It only shows them; each is changed where it lives.' },

@@ -132,7 +132,7 @@ pub fn used_by_newer(settings: &Settings) -> Option<String> {
 
 /// The rooms the member may switch off in Settings (HOME is always on). Off = not available:
 /// the tab is gone and nothing runs for it, but nothing is removed.
-pub const ROOMS: [&str; 22] = ["widgets", "theme", "apps", "myprofile", "diary", "projects", "library", "appearance", "studio", "story", "world", "chat", "dev", "market", "messaging", "automations", "calendar", "finance", "worldsmith", "scriptorium", "photo", "music"];
+pub const ROOMS: [&str; 23] = ["widgets", "theme", "apps", "myprofile", "diary", "projects", "library", "appearance", "studio", "story", "world", "chat", "dev", "market", "messaging", "automations", "calendar", "finance", "worldsmith", "scriptorium", "photo", "music", "crm"];
 /// Tiles that open the BROWSER window rather than a room (launcher.js windowRoom): pinnable too.
 const WINDOW_TILES: [&str; 2] = ["browser", "artifacts"];
 /// Rooms that wait for the member's own switch in Settings > Rooms, for a new Castle and for one
